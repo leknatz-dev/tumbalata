@@ -1,13 +1,5 @@
 package ph.tumbalata.game;
 
-import com.badlogic.gdx.Game;
-
-public class Main extends Game {
-
-    @Override
-    public void create() {
-        // Set the initial screen to your mockup arena game screen
-        setScreen(new MainMenuScreen(this));
-        
-    }
+/** Kept so old references still compile. The launcher uses TumbalataGame directly. */
+public class Main extends TumbalataGame {
 }

@@ -1,10 +1,10 @@
 package ph.tumbalata.game;
 
-import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
@@ -18,37 +18,40 @@ import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
-public class PlayerSelectScreen implements Screen {
+/** "Choose your character" screen: 4 placeholder cards, then starts the game. */
+public class CharacterSelectScreen implements Screen {
+    // --- SCREEN SIZE (same as the other menus) ---
     private static final float MENU_WIDTH = 700f;
     private static final float MENU_HEIGHT = 500f;
-
     private static final int MENU_WINDOW_W = 700;
     private static final int MENU_WINDOW_H = 500;
     private static final int GAME_WINDOW_W = 1280;
     private static final int GAME_WINDOW_H = 698;
 
+    // --- ASSET FILES (optional - placeholders are drawn if missing) ---
     private static final String BACKGROUND_FILE = "menu_background.png";
-    private static final String BUTTON_3P_FILE = "3p_button.png";
-    private static final String BUTTON_4P_FILE = "4p_button.png";
     private static final String SLIPPER_FILE = "menu_slipper.png";
-    private static final String HEADING_FILE = "menu_title.png";
+    private static final String HEADING_FILE = "select_character_title.png";
 
-    private static final float BUTTON_W = 144f;
-    private static final float BUTTON_H = 100f;
-    private static final float BUTTON_3P_X = 176f;
-    private static final float BUTTON_3P_Y = 200f;
-    private static final float BUTTON_4P_X = 380f;
-    private static final float BUTTON_4P_Y = 200f;
-
-    private static final float HEADING_CENTER_Y = 380f;
+    // --- HEADING ---
+    private static final float HEADING_CENTER_Y = 420f;
     private static final float HEADING_BOB_AMOUNT = 6f;
     private static final float HEADING_BOB_SPEED = 2.5f;
 
+    // --- CARD LAYOUT: each card's BOTTOM-LEFT corner on the 700 x 500 screen (x right, y UP) ---
+    private static final float CARD_W = 110f;
+    private static final float CARD_H = 150f;
+    private static final float CARD_GAP = 30f;
+    private static final float CARDS_Y = 190f;
+    private static final float CARDS_START_X = (MENU_WIDTH - (Characters.COUNT * CARD_W + (Characters.COUNT - 1) * CARD_GAP)) / 2f;
+
+    // Slipper indicator sits under the selected card and bobs up and down
     private static final float SLIPPER_GAP = 10f;
     private static final float SLIPPER_BOB_AMOUNT = 5f;
     private static final float SLIPPER_BOB_SPEED = 6f;
 
     private final TumbalataGame game;
+    private final int playerCount;
 
     private OrthographicCamera camera;
     private Viewport viewport;
@@ -58,25 +61,20 @@ public class PlayerSelectScreen implements Screen {
     private final GlyphLayout layout = new GlyphLayout();
 
     private Texture background;
-    private Texture button3pTexture;
-    private Texture button4pTexture;
     private Texture slipperTexture;
     private Texture headingTexture;
+    private final Texture[] portraits = new Texture[Characters.COUNT];
 
-    private final Rectangle[] buttonBounds = new Rectangle[2];
-    private final int[] playerCounts = { 3, 4 };
+    private final Rectangle[] cardBounds = new Rectangle[Characters.COUNT];
     private int selected = 0;
     private float time = 0f;
     private boolean leaving = false;
     private final Vector2 mouse = new Vector2();
     private float lastMouseX = -1f, lastMouseY = -1f;
 
-    public PlayerSelectScreen(TumbalataGame game) {
+    public CharacterSelectScreen(TumbalataGame game, int playerCount) {
         this.game = game;
-    }
-
-    public PlayerSelectScreen(Game game) {
-        this.game = (TumbalataGame) game;
+        this.playerCount = playerCount;
     }
 
     @Override
@@ -92,18 +90,17 @@ public class PlayerSelectScreen implements Screen {
         font = new BitmapFont();
 
         background = loadTexture(BACKGROUND_FILE);
-        button3pTexture = loadTexture(BUTTON_3P_FILE);
-        button4pTexture = loadTexture(BUTTON_4P_FILE);
         slipperTexture = loadTexture(SLIPPER_FILE);
         headingTexture = loadTexture(HEADING_FILE);
-
-        buttonBounds[0] = new Rectangle(BUTTON_3P_X, BUTTON_3P_Y, BUTTON_W, BUTTON_H);
-        buttonBounds[1] = new Rectangle(BUTTON_4P_X, BUTTON_4P_Y, BUTTON_W, BUTTON_H);
+        for (int i = 0; i < Characters.COUNT; i++) {
+            portraits[i] = loadTexture(Characters.PORTRAIT_FILES[i]);
+            cardBounds[i] = new Rectangle(CARDS_START_X + i * (CARD_W + CARD_GAP), CARDS_Y, CARD_W, CARD_H);
+        }
     }
 
+    /** Loads a texture, or returns null (silently - these are optional) if the file isn't there. */
     private Texture loadTexture(String file) {
         if (!Gdx.files.internal(file).exists()) {
-            Gdx.app.error("PlayerSelect", "Missing asset: " + file + " (using placeholder)");
             return null;
         }
         Texture t = new Texture(Gdx.files.internal(file));
@@ -116,34 +113,50 @@ public class PlayerSelectScreen implements Screen {
         if (leaving) return;
         time += delta;
         handleInput();
-        if (leaving) return; // handleInput may have switched screens and disposed this one - stop drawing
+        if (leaving) return; // handleInput may have switched screens and disposed this one
 
         ScreenUtils.clear(0.1f, 0.1f, 0.12f, 1f);
         camera.update();
         batch.setProjectionMatrix(camera.combined);
         shapeRenderer.setProjectionMatrix(camera.combined);
 
-        Rectangle sel = buttonBounds[selected];
+        Rectangle sel = cardBounds[selected];
         float bob = (MathUtils.sin(time * SLIPPER_BOB_SPEED) + 1f) / 2f * SLIPPER_BOB_AMOUNT;
 
-        if (background == null || button3pTexture == null || button4pTexture == null || slipperTexture == null) {
-            shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-            if (background == null) {
-                shapeRenderer.setColor(0.18f, 0.35f, 0.25f, 1f);
-                shapeRenderer.rect(0, 0, MENU_WIDTH, MENU_HEIGHT);
-            }
-            shapeRenderer.setColor(Color.DARK_GRAY);
-            if (button3pTexture == null) shapeRenderer.rect(buttonBounds[0].x, buttonBounds[0].y, BUTTON_W, BUTTON_H);
-            if (button4pTexture == null) shapeRenderer.rect(buttonBounds[1].x, buttonBounds[1].y, BUTTON_W, BUTTON_H);
-            if (slipperTexture == null) {
-                shapeRenderer.setColor(Color.BROWN);
-                shapeRenderer.ellipse(sel.x + (BUTTON_W - 40f) / 2f, sel.y - SLIPPER_GAP - 16f + bob, 40f, 16f);
-            }
-            shapeRenderer.end();
+        // --- Shapes: placeholder background, cards, selection border, placeholder slipper ---
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        if (background == null) {
+            shapeRenderer.setColor(0.18f, 0.35f, 0.25f, 1f);
+            shapeRenderer.rect(0, 0, MENU_WIDTH, MENU_HEIGHT);
         }
+        for (int i = 0; i < Characters.COUNT; i++) {
+            Rectangle r = cardBounds[i];
+            if (i == selected) { // white border behind the selected card
+                shapeRenderer.setColor(Color.WHITE);
+                shapeRenderer.rect(r.x - 5f, r.y - 5f, r.width + 10f, r.height + 10f);
+            }
+            if (portraits[i] == null) {
+                Color c = Characters.CARD_COLORS[i];
+                float dim = (i == selected) ? 1f : 0.65f; // unselected cards are a bit darker
+                shapeRenderer.setColor(c.r * dim, c.g * dim, c.b * dim, 1f);
+                shapeRenderer.rect(r.x, r.y, r.width, r.height);
+                // simple placeholder "head" so the card doesn't look empty
+                shapeRenderer.setColor(0f, 0f, 0f, 0.25f);
+                shapeRenderer.circle(r.x + r.width / 2f, r.y + r.height * 0.62f, 24f);
+                shapeRenderer.rect(r.x + r.width / 2f - 30f, r.y + 12f, 60f, 48f);
+            }
+        }
+        if (slipperTexture == null) {
+            shapeRenderer.setColor(Color.BROWN);
+            shapeRenderer.ellipse(sel.x + (CARD_W - 40f) / 2f, sel.y - SLIPPER_GAP - 16f - 5f + bob, 40f, 16f);
+        }
+        shapeRenderer.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
 
+        // --- Sprites and text ---
         batch.begin();
-
         if (background != null) batch.draw(background, 0, 0, MENU_WIDTH, MENU_HEIGHT);
 
         float headingBob = MathUtils.sin(time * HEADING_BOB_SPEED) * HEADING_BOB_AMOUNT;
@@ -153,50 +166,44 @@ public class PlayerSelectScreen implements Screen {
             batch.draw(headingTexture, (MENU_WIDTH - hw) / 2f, HEADING_CENTER_Y - hh / 2f + headingBob, hw, hh);
         } else {
             font.getData().setScale(2f);
-            layout.setText(font, "HOW MANY PLAYERS?");
-            font.draw(batch, "HOW MANY PLAYERS?", (MENU_WIDTH - layout.width) / 2f, HEADING_CENTER_Y + layout.height / 2f + headingBob);
+            layout.setText(font, "CHOOSE YOUR CHARACTER");
+            font.draw(batch, "CHOOSE YOUR CHARACTER", (MENU_WIDTH - layout.width) / 2f,
+                HEADING_CENTER_Y + layout.height / 2f + headingBob);
             font.getData().setScale(1f);
         }
 
-        if (button3pTexture != null) batch.draw(button3pTexture, buttonBounds[0].x, buttonBounds[0].y, BUTTON_W, BUTTON_H);
-        else drawLabel(0, "3P");
-
-        if (button4pTexture != null) batch.draw(button4pTexture, buttonBounds[1].x, buttonBounds[1].y, BUTTON_W, BUTTON_H);
-        else drawLabel(1, "4P");
+        for (int i = 0; i < Characters.COUNT; i++) {
+            Rectangle r = cardBounds[i];
+            if (portraits[i] != null) {
+                batch.setColor(i == selected ? Color.WHITE : new Color(0.65f, 0.65f, 0.65f, 1f));
+                batch.draw(portraits[i], r.x, r.y, r.width, r.height);
+                batch.setColor(Color.WHITE);
+            }
+            layout.setText(font, Characters.NAMES[i]);
+            font.draw(batch, Characters.NAMES[i], r.x + (r.width - layout.width) / 2f, r.y + 22f);
+        }
 
         if (slipperTexture != null) {
             float sw = slipperTexture.getWidth();
             float sh = slipperTexture.getHeight();
-            float sx = sel.x + (BUTTON_W - sw) / 2f;
-            float sy = sel.y - SLIPPER_GAP - sh + bob;
-            batch.draw(slipperTexture, sx, sy, sw, sh);
+            batch.draw(slipperTexture, sel.x + (CARD_W - sw) / 2f, sel.y - SLIPPER_GAP - 5f - sh + bob, sw, sh);
         }
-
         batch.end();
     }
 
-    private void drawLabel(int index, String text) {
-        Rectangle r = buttonBounds[index];
-        layout.setText(font, text);
-        font.draw(batch, text, r.x + (BUTTON_W - layout.width) / 2f, r.y + (BUTTON_H + layout.height) / 2f);
-    }
-
     private void handleInput() {
-        if (Gdx.input.isKeyJustPressed(Input.Keys.F11)) {
-            if (game != null) game.toggleFullscreen();
-        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F11)) game.toggleFullscreen();
+
         if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT) || Gdx.input.isKeyJustPressed(Input.Keys.A)) {
-            selected = (selected + buttonBounds.length - 1) % buttonBounds.length;
+            selected = (selected + cardBounds.length - 1) % cardBounds.length;
         }
         if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT) || Gdx.input.isKeyJustPressed(Input.Keys.D)) {
-            selected = (selected + 1) % buttonBounds.length;
+            selected = (selected + 1) % cardBounds.length;
         }
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
             leaving = true;
-            if (game != null) {
-                game.changeScreen(new MainMenuScreen(game), MENU_WINDOW_W, MENU_WINDOW_H);
-            }
+            game.changeScreen(new PlayerSelectScreen(game), MENU_WINDOW_W, MENU_WINDOW_H);
             return;
         }
 
@@ -207,8 +214,8 @@ public class PlayerSelectScreen implements Screen {
         lastMouseY = Gdx.input.getY();
 
         int hovered = -1;
-        for (int i = 0; i < buttonBounds.length; i++) {
-            if (buttonBounds[i].contains(mouse.x, mouse.y)) hovered = i;
+        for (int i = 0; i < cardBounds.length; i++) {
+            if (cardBounds[i].contains(mouse.x, mouse.y)) hovered = i;
         }
         if (hovered != -1 && mouseMoved) selected = hovered;
 
@@ -218,28 +225,26 @@ public class PlayerSelectScreen implements Screen {
         boolean clicked = Gdx.input.justTouched() && hovered != -1;
         if (clicked) selected = hovered;
 
-        if (confirm || clicked) startGame(playerCounts[selected]);
+        if (confirm || clicked) startGame();
     }
 
-    private void startGame(int playerCount) {
+    private void startGame() {
         leaving = true;
-        if (game != null) {
-            game.changeScreen(new CharacterSelectScreen(game, playerCount), MENU_WINDOW_W, MENU_WINDOW_H);
-        }
+        game.changeScreen(new GameScreen(playerCount, selected), GAME_WINDOW_W, GAME_WINDOW_H);
     }
 
     @Override
     public void resize(int width, int height) {
-        if (viewport != null) {
-            viewport.update(width, height, true);
-        }
+        if (viewport != null) viewport.update(width, height, true);
     }
 
     @Override public void pause() {}
     @Override public void resume() {}
 
     @Override
-    public void hide() {}
+    public void hide() {
+        dispose();
+    }
 
     @Override
     public void dispose() {
@@ -247,9 +252,10 @@ public class PlayerSelectScreen implements Screen {
         if (shapeRenderer != null) { shapeRenderer.dispose(); shapeRenderer = null; }
         if (font != null) { font.dispose(); font = null; }
         if (background != null) { background.dispose(); background = null; }
-        if (button3pTexture != null) { button3pTexture.dispose(); button3pTexture = null; }
-        if (button4pTexture != null) { button4pTexture.dispose(); button4pTexture = null; }
         if (slipperTexture != null) { slipperTexture.dispose(); slipperTexture = null; }
         if (headingTexture != null) { headingTexture.dispose(); headingTexture = null; }
+        for (int i = 0; i < portraits.length; i++) {
+            if (portraits[i] != null) { portraits[i].dispose(); portraits[i] = null; }
+        }
     }
 }

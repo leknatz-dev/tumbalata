@@ -2,7 +2,6 @@ package ph.tumbalata.game;
 
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.Graphics.DisplayMode;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
@@ -27,6 +26,7 @@ import com.badlogic.gdx.math.Polygon;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Shape2D;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
@@ -50,8 +50,6 @@ public class GameScreen implements Screen {
 
     private static final float RING_X = 0f;
     private static final float RING_Y = -64f;
-    private static final float RING_W = 0f;
-    private static final float RING_H = 0f;
 
     private static final float PLAYER_HITBOX_W = 14f;
     private static final float PLAYER_HITBOX_H = 10f;
@@ -111,6 +109,20 @@ public class GameScreen implements Screen {
     private float ringY = RING_Y;
 
     private int playerCount = 3;
+    private int characterIndex = 0; // which placeholder character Player 1 picked
+
+    // --- MATCH TIMER (5 seconds for testing the victory screen; change MATCH_TIME_SECONDS for a real match) ---
+    private static final float MATCH_TIME_SECONDS = 5f;
+    private static final int VICTORY_WINDOW_W = 700;
+    private static final int VICTORY_WINDOW_H = 500;
+    private float matchTimeLeft = MATCH_TIME_SECONDS;
+    private boolean matchOver = false;
+
+    // Real scoring isn't built yet. Final scores per player (index 0 = Player 1); fill this in once scoring exists.
+    private final int[] scores = new int[4];
+    // While true, random scores are used when the timer ends so the victory screen has something to show.
+    // Set to false once real scoring is in.
+    private boolean fakeScoresForTesting = true;
 
     private enum GamePhase {
         THROWER_ROAMING,
@@ -141,11 +153,16 @@ public class GameScreen implements Screen {
     private float impactDelayTimer = 0f;
 
     public GameScreen() {
-        this(3);
+        this(3, 0);
     }
 
     public GameScreen(int playerCount) {
+        this(playerCount, 0);
+    }
+
+    public GameScreen(int playerCount, int characterIndex) {
         this.playerCount = playerCount;
+        this.characterIndex = MathUtils.clamp(characterIndex, 0, Characters.COUNT - 1);
     }
 
     @Override
@@ -214,6 +231,9 @@ public class GameScreen implements Screen {
             20f, screenWidth - 20f, 20f, screenHeight - 20f,
             playerSheet, playerSlipperSheet, playerCanSheet
         );
+
+        // Player 1 (WASD) wears the chosen character's placeholder color
+        thrower.tint.set(Characters.TINTS[characterIndex]);
     }
 
     private void loadCollisionLayer(String layerName, Array<Shape2D> out) {
@@ -391,6 +411,10 @@ public class GameScreen implements Screen {
         // Enforce viewport apply to prevent scaling loss across screen switches
         viewport.apply();
 
+        if (matchOver) return;
+        updateMatchTimer(delta);
+        if (matchOver) return; // the timer just ended and the victory screen took over - stop drawing this screen
+
         savePreviousPositions();
         handleInput(delta);
         update(delta);
@@ -404,6 +428,9 @@ public class GameScreen implements Screen {
         mapRenderer.setView(camera);
         mapRenderer.render();
 
+        // Blending on so the shadows are see-through
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(Color.WHITE);
         if (SHOW_THROW_LINE) {
@@ -418,11 +445,14 @@ public class GameScreen implements Screen {
         }
 
         can.renderShadow(shapeRenderer);
+        thrower.renderShadow(shapeRenderer);
+        taya.renderShadow(shapeRenderer);
 
         if (!thrower.hasSlipper) {
             slipper.render(shapeRenderer);
         }
         shapeRenderer.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
 
         spriteBatch.begin();
 
@@ -449,11 +479,8 @@ public class GameScreen implements Screen {
             can.render(spriteBatch);
         }
 
-        if (RING_W > 0f && RING_H > 0f) {
-            spriteBatch.draw(upperRingTexture, ringX, ringY, RING_W, RING_H);
-        } else {
-            spriteBatch.draw(upperRingTexture, ringX, ringY);
-        }
+        // Upper ring overlay, drawn after the players so they walk behind it
+        spriteBatch.draw(upperRingTexture, ringX, ringY);
 
         if (!thrower.hasSlipper && Vector2.dst(thrower.position.x, thrower.position.y, slipper.position.x, slipper.position.y) < 45f) {
             font.draw(spriteBatch, "[E] Pick Up Slipper", slipper.position.x - 45f, slipper.position.y + 25f);
@@ -471,6 +498,16 @@ public class GameScreen implements Screen {
             }
         }
 
+        // Timer HUD (top center)
+        float timerLeft = Math.max(0f, matchTimeLeft);
+        int totalSeconds = MathUtils.ceil(timerLeft);
+        String timerText = (totalSeconds / 60) + ":" + String.format("%02d", totalSeconds % 60);
+        font.getData().setScale(2.2f);
+        font.setColor(timerLeft <= 10f ? Color.SCARLET : Color.WHITE);
+        font.draw(spriteBatch, timerText, VIEW_X + VIEW_W / 2f - 100f, VIEW_Y + VIEW_H - 14f, 200f, Align.center, false);
+        font.getData().setScale(1.2f);
+        font.setColor(Color.WHITE);
+
         spriteBatch.end();
 
         renderUIOverlays();
@@ -480,13 +517,36 @@ public class GameScreen implements Screen {
         }
     }
 
+    private void updateMatchTimer(float delta) {
+        matchTimeLeft -= delta;
+        if (matchTimeLeft <= 0f) {
+            endMatch();
+        }
+    }
+
+    private void endMatch() {
+        matchOver = true;
+
+        int[] finalScores = new int[playerCount];
+        for (int i = 0; i < playerCount; i++) {
+            if (fakeScoresForTesting) {
+                finalScores[i] = MathUtils.random(0, 20);
+            } else {
+                finalScores[i] = (i < scores.length) ? scores[i] : 0;
+            }
+        }
+
+        if (Gdx.app.getApplicationListener() instanceof TumbalataGame) {
+            TumbalataGame tumbalata = (TumbalataGame) Gdx.app.getApplicationListener();
+            tumbalata.changeScreen(new VictoryScreen(tumbalata, playerCount, finalScores, characterIndex),
+                VICTORY_WINDOW_W, VICTORY_WINDOW_H);
+        }
+    }
+
     private void handleInput(float delta) {
         if (Gdx.input.isKeyJustPressed(Input.Keys.F11)) {
-            if (Gdx.graphics.isFullscreen()) {
-                Gdx.graphics.setWindowedMode((int) WORLD_WIDTH, (int) WORLD_HEIGHT);
-            } else {
-                DisplayMode currentMode = Gdx.graphics.getDisplayMode();
-                Gdx.graphics.setFullscreenMode(currentMode);
+            if (Gdx.app.getApplicationListener() instanceof TumbalataGame) {
+                ((TumbalataGame) Gdx.app.getApplicationListener()).toggleFullscreen();
             }
         }
 
@@ -772,8 +832,8 @@ public class GameScreen implements Screen {
         shapeRenderer.rect(0f, 0f, WORLD_WIDTH, WORLD_HEIGHT);
         shapeRenderer.setColor(Color.MAGENTA);
         shapeRenderer.rect(ringX, ringY,
-            (RING_W > 0f) ? RING_W : upperRingTexture.getWidth(),
-            (RING_H > 0f) ? RING_H : upperRingTexture.getHeight());
+            upperRingTexture.getWidth(),
+            upperRingTexture.getHeight());
 
         if (showPlayerWalls) {
             shapeRenderer.setColor(Color.RED);

@@ -2,32 +2,54 @@ package ph.tumbalata.game;
 
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.Graphics.DisplayMode;
 import com.badlogic.gdx.Screen;
 
+/**
+ * Owns ALL window handling (resize + fullscreen) so every screen behaves the same.
+ * Screens should switch with changeScreen(...) and call toggleFullscreen() on F11.
+ */
 public class TumbalataGame extends Game {
+    private static final int DEFAULT_WINDOW_W = 700;
+    private static final int DEFAULT_WINDOW_H = 500;
+
+    // The windowed size WE last set. If the window is any other size, the player resized or maximized it
+    // by hand, and we must not override that.
+    private int autoW = DEFAULT_WINDOW_W;
+    private int autoH = DEFAULT_WINDOW_H;
 
     @Override
     public void create() {
-        setScreen(new PlayerSelectScreen(this));
+        // Size the launcher gave the window (also where "untouched" starts)
+        autoW = Gdx.graphics.getWidth();
+        autoH = Gdx.graphics.getHeight();
+        setScreen(new MainMenuScreen(this));
     }
 
+    /** Switches screens. The window is resized to width x height ONLY if it is untouched (not fullscreen, not maximized/resized by hand). */
     public void changeScreen(Screen newScreen, int width, int height) {
+        applyWindowSize(width, height);
         if (getScreen() != null) {
             getScreen().dispose();
-        }
-        if (!Gdx.graphics.isFullscreen()) {
-            Gdx.graphics.setWindowedMode(width, height);
         }
         setScreen(newScreen);
     }
 
+    private void applyWindowSize(int width, int height) {
+        if (Gdx.graphics.isFullscreen()) return;
+
+        boolean untouched = Gdx.graphics.getWidth() == autoW && Gdx.graphics.getHeight() == autoH;
+        if (untouched) {
+            Gdx.graphics.setWindowedMode(width, height);
+            autoW = width;
+            autoH = height;
+        }
+    }
+
     public void toggleFullscreen() {
         if (Gdx.graphics.isFullscreen()) {
-            Gdx.graphics.setWindowedMode(700, 500);
+            Gdx.graphics.setWindowedMode(autoW, autoH);
         } else {
-            DisplayMode currentMode = Gdx.graphics.getDisplayMode();
-            Gdx.graphics.setFullscreenMode(currentMode);
+            Gdx.graphics.setFullscreenMode(Gdx.graphics.getDisplayMode());
         }
     }
 

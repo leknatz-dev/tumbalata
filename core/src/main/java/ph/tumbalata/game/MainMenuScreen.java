@@ -48,7 +48,7 @@ public class MainMenuScreen implements Screen {
     private static final float SLIPPER_BOB_AMOUNT = 5f;
     private static final float SLIPPER_BOB_SPEED = 6f;
 
-    private final Game game;
+    private final TumbalataGame game;
 
     private OrthographicCamera camera;
     private Viewport viewport;
@@ -71,7 +71,7 @@ public class MainMenuScreen implements Screen {
     private float lastMouseX = -1f, lastMouseY = -1f;
     private boolean leaving = false;
 
-    public MainMenuScreen(Game game) {
+    public MainMenuScreen(TumbalataGame game) {
         this.game = game;
     }
 
@@ -95,11 +95,6 @@ public class MainMenuScreen implements Screen {
 
     buttonBounds[0] = new Rectangle(START_X, START_Y, BUTTON_W, BUTTON_H);
     buttonBounds[1] = new Rectangle(EXIT_X, EXIT_Y, BUTTON_W, BUTTON_H);
-
-    // Only switch to windowed mode if not in full screen
-    if (!Gdx.graphics.isFullscreen()) {
-        Gdx.graphics.setWindowedMode(MENU_WINDOW_W, MENU_WINDOW_H);
-    }
 }
     private Texture loadTexture(String file) {
         if (!Gdx.files.internal(file).exists()) {
@@ -189,6 +184,8 @@ public class MainMenuScreen implements Screen {
     }
 
     private void handleInput() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F11)) game.toggleFullscreen();
+
         if (Gdx.input.isKeyJustPressed(Input.Keys.UP) || Gdx.input.isKeyJustPressed(Input.Keys.W)) {
             selected = (selected + buttonBounds.length - 1) % buttonBounds.length;
         }
@@ -220,7 +217,7 @@ public class MainMenuScreen implements Screen {
     private void activate(int index) {
         if (index == 0) {
             leaving = true;
-            game.setScreen(new PlayerSelectScreen(game));
+            game.changeScreen(new PlayerSelectScreen(game), MENU_WINDOW_W, MENU_WINDOW_H);
         } else {
             Gdx.app.exit();
         }

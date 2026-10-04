@@ -1,9 +1,11 @@
 package ph.tumbalata.game;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Vector2;
 
 public class Player {
@@ -19,6 +21,15 @@ public class Player {
 
     public float width = 48f;
     public float height = 48f;
+
+    // Multiplies the sprite's colors (white = unchanged). Used for the placeholder character colors.
+    public Color tint = new Color(Color.WHITE);
+
+    // Ground shadow under the feet (tweak these to match the sprite)
+    public float shadowWidth = 28f;
+    public float shadowHeight = 10f;
+    public float shadowOffsetY = -19f;   // from the player's position to the CENTER of the shadow
+    public float shadowAlpha = 0.30f;
 
     private PlayerAnimation walkAnim;
     private PlayerAnimation walkWithSlipperAnim;
@@ -113,12 +124,26 @@ public class Player {
             currentFrame = walkAnim.getCurrentFrame();
         }
 
+        float previousColor = batch.getPackedColor();
+        batch.setColor(tint);
         batch.draw(
             currentFrame, 
             position.x - width / 2f, 
             position.y - height / 2f, 
             width, 
             height
+        );
+        batch.setPackedColor(previousColor);
+    }
+
+    /** Call inside a ShapeRenderer Filled block (with GL blending on), BEFORE the sprites are drawn. */
+    public void renderShadow(ShapeRenderer shapeRenderer) {
+        shapeRenderer.setColor(0f, 0f, 0f, shadowAlpha);
+        shapeRenderer.ellipse(
+            position.x - shadowWidth / 2f,
+            position.y + shadowOffsetY - shadowHeight / 2f,
+            shadowWidth,
+            shadowHeight
         );
     }
 }
