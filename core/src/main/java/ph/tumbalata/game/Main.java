@@ -7,6 +7,7 @@ public class Main extends Game {
     @Override
     public void create() {
         // Set the initial screen to your mockup arena game screen
-        setScreen(new GameScreen());
+        setScreen(new MainMenuScreen(this));
+        
     }
 }

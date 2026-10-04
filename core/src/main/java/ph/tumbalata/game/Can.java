@@ -19,11 +19,11 @@ public class Can {
     public float height = 36f;
 
     // --- TWEAKABLE FLING & PHYSICS PARAMETERS ---
-    private float gravity = -400f;         // Tweak gravity (more negative = falls faster)
+    private float gravity = -850f;         // Tweak gravity (more negative = falls faster)
     private float bounceFactor = 0.55f;    // Ground bounce elasticity (0 = no bounce, 1 = max bounce)
     private float friction = 0.95f;        // Ground slide friction
     private float wallBounceDamping = 0.75f; // Wall rebound speed retention (0.75 = retains 75% speed)
-    private float tossPowerMultiplier = 5f; // Vertical jump scaling (lower = less air launch height)
+    private float tossPowerMultiplier = 3.5f; // Vertical jump scaling (lower = less air launch height)
 
     // Animation & Rotation variables
     private Animation<TextureRegion> spinAnimation;
@@ -77,6 +77,30 @@ public class Can {
         this.isHit = true;
     }
 
+    /**
+     * Tosses the can so that its FIRST landing is exactly at (targetX, targetY).
+     * Uses the current zPosition as release height, the toss power for air time, and compensates for friction.
+     */
+    public void tossTo(float targetX, float targetY, float power) {
+        float zv0 = 180f + power * tossPowerMultiplier;
+        float g = -gravity;
+        // Time until the can returns to the ground: z0 + zv0*t - g/2*t^2 = 0
+        float airTime = (zv0 + (float) Math.sqrt(zv0 * zv0 + 2f * g * Math.max(0f, zPosition))) / g;
+
+        float decay = -60f * (float) Math.log(friction);
+        float travelFactor = (decay > 0f) ? (1f - (float) Math.exp(-decay * airTime)) / decay : airTime;
+
+        float dx = targetX - position.x;
+        float dy = targetY - position.y;
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        if (len < 0.001f) {
+            toss(0f, 0f, power);
+            return;
+        }
+        float speed = len / travelFactor;
+        toss(dx / len * speed, dy / len * speed, power);
+    }
+
     /** Backwards-compatible: built-in outer walls from (0,0) to (screenWidth, screenHeight). */
     public void update(float delta, float screenWidth, float screenHeight) {
         update(delta, 0f, 0f, screenWidth, screenHeight);
@@ -88,8 +112,12 @@ public class Can {
             return;
         }
 
-        // 1. Horizontal movement
-        position.add(velocity.x * delta, velocity.y * delta);
+        // 1. Horizontal movement. Ground friction is time-based (same feel as "friction per 60 fps frame"),
+        //    so the can travels the same distance at any frame rate and tossTo() can predict it exactly.
+        float decay = -60f * (float) Math.log(friction);
+        float decayStep = (float) Math.exp(-decay * delta);
+        float moveFactor = (decay > 0f) ? (1f - decayStep) / decay : delta;
+        position.add(velocity.x * moveFactor, velocity.y * moveFactor);
 
         // 2. Strict Screen Wall Bounce Logic (4 Boundaries)
         float halfWidth = width / 2f;
@@ -118,7 +146,7 @@ public class Can {
         }
 
         // 3. Ground Friction
-        velocity.scl(friction);
+        velocity.scl(decayStep);
         if (velocity.len() < 5f) {
             velocity.set(0, 0);
         }

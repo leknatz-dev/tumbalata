@@ -23,6 +23,12 @@ public class Player {
     private PlayerAnimation walkAnim;
     private PlayerAnimation walkWithSlipperAnim;
     private PlayerAnimation walkWithCanAnim;
+    public boolean facingRight = true;
+    public void updateFacingFromAngle(float angle) {
+    // Standard normalized angle check: if pointing left-ish, flip sprite left
+    float normalizedAngle = (angle % 360 + 360) % 360;
+    this.facingRight = !(normalizedAngle > 90 && normalizedAngle < 270);
+}
 
     public Player(float x, float y, float speed, int upKey, int downKey, int leftKey, int rightKey, 
                   float minX, float maxX, float minY, float maxY, 
