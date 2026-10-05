@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="40" height="22" tilewidth="32" tileheight="32" infinite="0" nextlayerid="8" nextobjectid="85">
+<map version="1.10" tiledversion="1.12.2" orientation="orthogonal" renderorder="right-down" width="40" height="22" tilewidth="32" tileheight="32" infinite="0" nextlayerid="10" nextobjectid="85">
  <tileset firstgid="1" name="asd" tilewidth="32" tileheight="32" tilecount="1056" columns="44">
- <image source="mapcourtcollision.png" width="1280" height="704"/>
+  <image source="mapcourt.png" width="1408" height="768"/>
  </tileset>
  <objectgroup id="7" name="collision2">
   <object id="59" x="-12" y="142.667" width="1442.67" height="49.3333"/>
@@ -19,10 +19,13 @@
   <object id="73" x="1254.67" y="305.333" width="60" height="101.333"/>
   <object id="74" x="1242.67" y="189.333" width="69.3333" height="141.333"/>
  </objectgroup>
- <imagelayer id="4" name="Image Layer 1">
-  <image source="mapcourtcollision.png" width="1280" height="704"/>
+ <imagelayer id="8" name="Image Layer 2">
+  <image source="mapcourt.png" width="1408" height="768"/>
  </imagelayer>
- <objectgroup color="#00ffff" id="6" name="collision1">
+ <imagelayer id="9" name="Image Layer 3">
+  <image source="upperring.png" width="1408" height="768"/>
+ </imagelayer>
+ <objectgroup color="#00ffff" id="6" name="collision1" visible="0">
   <object id="2" x="1239.33" y="344.667"/>
   <object id="3" x="1243.33" y="364.667"/>
   <object id="4" x="1247.33" y="382"/>

@@ -5,6 +5,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
@@ -25,7 +26,8 @@ public class MainMenuScreen implements Screen {
     private static final int MENU_WINDOW_W = 700;
     private static final int MENU_WINDOW_H = 500;
 
-    private static final String BACKGROUND_FILE = "menu_background.png";
+    private static final String BACKGROUND_FILE = "menu_background.png";   // only used if the live background can't load
+    private static final float BACKDROP_DIM = 0.35f;                        // how much the live map is darkened (0 = not at all)
     private static final String START_BUTTON_FILE = "start_button.png";
     private static final String EXIT_BUTTON_FILE = "exit_button.png";
     private static final String SLIPPER_FILE = "menu_slipper.png";
@@ -58,6 +60,7 @@ public class MainMenuScreen implements Screen {
     private final GlyphLayout layout = new GlyphLayout();
 
     private Texture background;
+    private MenuBackdrop backdrop; // live map + wandering characters (null = fall back to the background image)
     private Texture startTexture;
     private Texture exitTexture;
     private Texture slipperTexture;
@@ -88,6 +91,7 @@ public class MainMenuScreen implements Screen {
     font = new BitmapFont();
 
     background = loadTexture(BACKGROUND_FILE);
+    backdrop = game.getBackdrop();
     startTexture = loadTexture(START_BUTTON_FILE);
     exitTexture = loadTexture(EXIT_BUTTON_FILE);
     slipperTexture = loadTexture(SLIPPER_FILE);
@@ -110,17 +114,21 @@ public class MainMenuScreen implements Screen {
     public void render(float delta) {
         time += delta;
         handleInput();
-        if (leaving) return;
 
         ScreenUtils.clear(0.1f, 0.1f, 0.12f, 1f);
         camera.update();
         batch.setProjectionMatrix(camera.combined);
         shapeRenderer.setProjectionMatrix(camera.combined);
 
+        // Live background: the game map with the 4 characters walking around (shared across the menu screens)
+        if (backdrop != null) {
+            backdrop.renderDimmed(delta, shapeRenderer, camera.combined, MENU_WIDTH, MENU_HEIGHT, BACKDROP_DIM);
+        }
+
         boolean needShapes = background == null || startTexture == null || exitTexture == null || slipperTexture == null;
         if (needShapes) {
             shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-            if (background == null) {
+            if (backdrop == null && background == null) {
                 shapeRenderer.setColor(0.18f, 0.35f, 0.25f, 1f);
                 shapeRenderer.rect(0, 0, MENU_WIDTH, MENU_HEIGHT);
             }
@@ -137,7 +145,7 @@ public class MainMenuScreen implements Screen {
 
         batch.begin();
 
-        if (background != null) batch.draw(background, 0, 0, MENU_WIDTH, MENU_HEIGHT);
+        if (backdrop == null && background != null) batch.draw(background, 0, 0, MENU_WIDTH, MENU_HEIGHT);
 
         float titleBob = MathUtils.sin(time * TITLE_BOB_SPEED) * TITLE_BOB_AMOUNT;
         if (titleTexture != null) {
@@ -185,6 +193,7 @@ public class MainMenuScreen implements Screen {
 
     private void handleInput() {
         if (Gdx.input.isKeyJustPressed(Input.Keys.F11)) game.toggleFullscreen();
+        if (leaving) return; // a screen change was requested; the screen keeps drawing while the transition plays
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.UP) || Gdx.input.isKeyJustPressed(Input.Keys.W)) {
             selected = (selected + buttonBounds.length - 1) % buttonBounds.length;
@@ -242,6 +251,7 @@ public class MainMenuScreen implements Screen {
         if (shapeRenderer != null) { shapeRenderer.dispose(); shapeRenderer = null; }
         if (font != null) { font.dispose(); font = null; }
         if (background != null) { background.dispose(); background = null; }
+        backdrop = null; // owned by TumbalataGame and shared with the other menu screens
         if (startTexture != null) { startTexture.dispose(); startTexture = null; }
         if (exitTexture != null) { exitTexture.dispose(); exitTexture = null; }
         if (slipperTexture != null) { slipperTexture.dispose(); slipperTexture = null; }

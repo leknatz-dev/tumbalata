@@ -159,10 +159,8 @@ public class VictoryScreen implements Screen {
 
     @Override
     public void render(float delta) {
-        if (leaving) return;
         time += delta;
         handleInput();
-        if (leaving) return; // handleInput may have switched screens and disposed this one
 
         ScreenUtils.clear(0.10f, 0.12f, 0.20f, 1f);
         camera.update();
@@ -280,6 +278,7 @@ public class VictoryScreen implements Screen {
 
     private void handleInput() {
         if (Gdx.input.isKeyJustPressed(Input.Keys.F11)) game.toggleFullscreen();
+        if (leaving) return; // a screen change was requested; the screen keeps drawing while the transition plays
 
         if (time < INPUT_DELAY) return;
 

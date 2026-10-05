@@ -36,6 +36,10 @@ public class GameScreen implements Screen {
     public static final float WORLD_WIDTH = 1280f;
     public static final float WORLD_HEIGHT = 704f;
 
+    private boolean lastButtonA = false;
+    private boolean lastButtonB = false;
+    private boolean lastButtonSelect = false;
+
     private static final float VIEW_X = 0f;
     private static final float VIEW_Y = -64f;
     private static final float VIEW_W = 1408f;
@@ -93,6 +97,9 @@ public class GameScreen implements Screen {
     private Texture playerCanSheet;
     private Texture canSheet;
 
+    // USB NES Gamepad Handler
+    private RetroControllerHandler retroController;
+
     private final Array<Shape2D> playerWalls = new Array<>();
     private final Array<Shape2D> canWalls = new Array<>();
     private final Array<Shape2D> canBlockers = new Array<>();
@@ -109,19 +116,16 @@ public class GameScreen implements Screen {
     private float ringY = RING_Y;
 
     private int playerCount = 3;
-    private int characterIndex = 0; // which placeholder character Player 1 picked
+    private int characterIndex = 0;
 
-    // --- MATCH TIMER (5 seconds for testing the victory screen; change MATCH_TIME_SECONDS for a real match) ---
-    private static final float MATCH_TIME_SECONDS = 5f;
+    // --- MATCH TIMER ---
+    private static final float MATCH_TIME_SECONDS = 40f;
     private static final int VICTORY_WINDOW_W = 700;
     private static final int VICTORY_WINDOW_H = 500;
     private float matchTimeLeft = MATCH_TIME_SECONDS;
     private boolean matchOver = false;
 
-    // Real scoring isn't built yet. Final scores per player (index 0 = Player 1); fill this in once scoring exists.
     private final int[] scores = new int[4];
-    // While true, random scores are used when the timer ends so the victory screen has something to show.
-    // Set to false once real scoring is in.
     private boolean fakeScoresForTesting = true;
 
     private enum GamePhase {
@@ -170,7 +174,6 @@ public class GameScreen implements Screen {
         camera = new OrthographicCamera();
         viewport = new FitViewport(VIEW_W, VIEW_H, camera);
         
-        // Sync viewport and camera with current resolution state when screen becomes active
         viewport.update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
         camera.position.set(VIEW_X + VIEW_W / 2f, VIEW_Y + VIEW_H / 2f, 0);
         camera.update();
@@ -180,6 +183,9 @@ public class GameScreen implements Screen {
         font = new BitmapFont();
         font.setColor(Color.WHITE);
         font.getData().setScale(1.2f);
+
+        // Initialize USB retro gamepad listener
+        retroController = new RetroControllerHandler();
 
         screenWidth = WORLD_WIDTH;
         screenHeight = WORLD_HEIGHT;
@@ -232,7 +238,6 @@ public class GameScreen implements Screen {
             playerSheet, playerSlipperSheet, playerCanSheet
         );
 
-        // Player 1 (WASD) wears the chosen character's placeholder color
         thrower.tint.set(Characters.TINTS[characterIndex]);
     }
 
@@ -408,16 +413,16 @@ public class GameScreen implements Screen {
 
     @Override
     public void render(float delta) {
-        // Enforce viewport apply to prevent scaling loss across screen switches
         viewport.apply();
 
-        if (matchOver) return;
-        updateMatchTimer(delta);
-        if (matchOver) return; // the timer just ended and the victory screen took over - stop drawing this screen
-
-        savePreviousPositions();
-        handleInput(delta);
-        update(delta);
+        if (!matchOver) {
+            updateMatchTimer(delta);
+        }
+        if (!matchOver) {
+            savePreviousPositions();
+            handleInput(delta);
+            update(delta);
+        }
 
         ScreenUtils.clear(0f, 0f, 0f, 1f);
 
@@ -428,7 +433,6 @@ public class GameScreen implements Screen {
         mapRenderer.setView(camera);
         mapRenderer.render();
 
-        // Blending on so the shadows are see-through
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
@@ -479,26 +483,24 @@ public class GameScreen implements Screen {
             can.render(spriteBatch);
         }
 
-        // Upper ring overlay, drawn after the players so they walk behind it
         spriteBatch.draw(upperRingTexture, ringX, ringY);
 
         if (!thrower.hasSlipper && Vector2.dst(thrower.position.x, thrower.position.y, slipper.position.x, slipper.position.y) < 45f) {
-            font.draw(spriteBatch, "[E] Pick Up Slipper", slipper.position.x - 45f, slipper.position.y + 25f);
+            font.draw(spriteBatch, "[E] or [B] Pick Up Slipper", slipper.position.x - 45f, slipper.position.y + 25f);
         }
 
         if ((currentPhase == GamePhase.TAYA_WAITING_PICKUP || currentPhase == GamePhase.CAN_HIT_SCRAMBLE) && !taya.hasCan) {
             if (Vector2.dst(taya.position.x, taya.position.y, can.position.x, can.position.y) < 35f) {
-                font.draw(spriteBatch, "[E] Pick Up Can", can.position.x - 35f, can.position.y + 30f);
+                font.draw(spriteBatch, "[E] or [B] Pick Up Can", can.position.x - 35f, can.position.y + 30f);
             }
         }
 
         if ((currentPhase == GamePhase.RETRIEVAL_PHASE || currentPhase == GamePhase.CAN_HIT_SCRAMBLE) && taya.hasCan) {
             if (Vector2.dst(taya.position.x, taya.position.y, canBasePosition.x, canBasePosition.y) < 35f) {
-                font.draw(spriteBatch, "[E] Place Can at Base", canBasePosition.x - 45f, canBasePosition.y + 35f);
+                font.draw(spriteBatch, "[E] or [B] Place Can at Base", canBasePosition.x - 45f, canBasePosition.y + 35f);
             }
         }
 
-        // Timer HUD (top center)
         float timerLeft = Math.max(0f, matchTimeLeft);
         int totalSeconds = MathUtils.ceil(timerLeft);
         String timerText = (totalSeconds / 60) + ":" + String.format("%02d", totalSeconds % 60);
@@ -544,6 +546,12 @@ public class GameScreen implements Screen {
     }
 
     private void handleInput(float delta) {
+        
+
+        boolean btnAJustPressed = retroController.buttonA && !lastButtonA;
+        boolean btnBJustPressed = retroController.buttonB && !lastButtonB;
+        boolean btnSelectJustPressed = retroController.buttonSelect && !lastButtonSelect;
+
         if (Gdx.input.isKeyJustPressed(Input.Keys.F11)) {
             if (Gdx.app.getApplicationListener() instanceof TumbalataGame) {
                 ((TumbalataGame) Gdx.app.getApplicationListener()).toggleFullscreen();
@@ -561,9 +569,21 @@ public class GameScreen implements Screen {
             if (Gdx.input.isKeyJustPressed(Input.Keys.L)) ringX += step;
         }
 
+        // --- USB GAMEPAD MOVEMENT INTEGRATION ---
+        Vector2 gamepadDir = retroController.getMoveDirection();
+        if (gamepadDir.len2() > 0) {
+            if (currentPhase == GamePhase.THROWER_ROAMING || currentPhase == GamePhase.CAN_HIT_SCRAMBLE || currentPhase == GamePhase.RETRIEVAL_PHASE) {
+                thrower.position.x += gamepadDir.x * GameConstants.PLAYER_SPEED * delta;
+                thrower.position.y += gamepadDir.y * GameConstants.PLAYER_SPEED * delta;
+            }
+        }
+
+        // Keyboard player controls
         if (currentPhase == GamePhase.THROWER_ROAMING || currentPhase == GamePhase.CAN_HIT_SCRAMBLE || currentPhase == GamePhase.RETRIEVAL_PHASE) {
             thrower.handleInput(delta);
-            if (Gdx.input.isKeyJustPressed(Input.Keys.E) && !thrower.hasSlipper) {
+
+            // Pickup Slipper: Keyboard [E] or Gamepad [B]
+            if ((Gdx.input.isKeyJustPressed(Input.Keys.E) || btnBJustPressed) && !thrower.hasSlipper) {
                 if (Vector2.dst(thrower.position.x, thrower.position.y, slipper.position.x, slipper.position.y) < 45f) {
                     thrower.hasSlipper = true;
                 }
@@ -572,16 +592,18 @@ public class GameScreen implements Screen {
 
         taya.handleInput(delta);
 
+        // Taya Pick Up Can: Keyboard [E] or Gamepad [B]
         if (currentPhase == GamePhase.TAYA_WAITING_PICKUP || currentPhase == GamePhase.CAN_HIT_SCRAMBLE) {
-            if (!taya.hasCan && Gdx.input.isKeyJustPressed(Input.Keys.E)) {
+            if (!taya.hasCan && (Gdx.input.isKeyJustPressed(Input.Keys.E) || btnBJustPressed)) {
                 if (Vector2.dst(taya.position.x, taya.position.y, can.position.x, can.position.y) < 35f) {
                     taya.hasCan = true;
                 }
             }
         }
 
+        // Taya Place Can: Keyboard [E] or Gamepad [B]
         if ((currentPhase == GamePhase.CAN_HIT_SCRAMBLE || currentPhase == GamePhase.RETRIEVAL_PHASE) && taya.hasCan) {
-            if (Gdx.input.isKeyJustPressed(Input.Keys.E)) {
+            if (Gdx.input.isKeyJustPressed(Input.Keys.E) || btnBJustPressed) {
                 if (Vector2.dst(taya.position.x, taya.position.y, canBasePosition.x, canBasePosition.y) < 35f) {
                     taya.hasCan = false;
                     can.reset(canBasePosition.x, canBasePosition.y);
@@ -589,7 +611,8 @@ public class GameScreen implements Screen {
             }
         }
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+        // Primary Action (Launch/Select Angle/Power): Keyboard [SPACE] or Gamepad [A]
+        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) || btnAJustPressed) {
             if (currentPhase == GamePhase.THROWER_ROAMING && thrower.hasSlipper) {
                 currentPhase = GamePhase.THROWER_SELECTING_ANGLE;
                 angleTimer = 0f;
@@ -612,7 +635,12 @@ public class GameScreen implements Screen {
             }
         }
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.R)) resetRound();
+        // Reset Round: Keyboard [R] or Gamepad [Select]
+        if (Gdx.input.isKeyJustPressed(Input.Keys.R) || btnSelectJustPressed) resetRound();
+
+        lastButtonA = retroController.buttonA;
+        lastButtonB = retroController.buttonB;
+        lastButtonSelect = retroController.buttonSelect;
     }
 
     private void update(float delta) {
